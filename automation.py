@@ -1,18 +1,22 @@
 """
 Browser Automation Module
 Handles CMS login, LMS navigation, and assignment scraping.
+Supports Chrome and Edge browsers with auto-detection.
 """
 
 import time
 from datetime import datetime
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.edge.service import Service as EdgeService
+from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 
 class BUAutomation:
@@ -40,13 +44,40 @@ class BUAutomation:
         self.progress_callback(message)
         
     def start_browser(self):
-        """Start Chrome browser with configured options."""
-        options = Options()
+        """Start browser with auto-detection (Chrome → Edge fallback)."""
+        self._update_progress("Detecting available browser...")
+        
+        # Try Chrome first, then Edge
+        browser_started = False
+        
+        # Attempt Chrome
+        try:
+            self._update_progress("Trying Chrome...")
+            browser_started = self._start_chrome()
+        except Exception as chrome_error:
+            self._update_progress("Chrome not available, trying Edge...")
+            try:
+                browser_started = self._start_edge()
+            except Exception as edge_error:
+                raise Exception(
+                    f"No compatible browser found!\n"
+                    f"Chrome error: {chrome_error}\n"
+                    f"Edge error: {edge_error}\n\n"
+                    f"Please install Chrome or Edge browser."
+                )
+        
+        if browser_started:
+            self.driver.implicitly_wait(10)
+            return True
+        return False
+    
+    def _start_chrome(self):
+        """Start Chrome browser."""
+        options = ChromeOptions()
         
         if self.headless:
             options.add_argument("--headless=new")
         else:
-            # Run minimized
             options.add_argument("--start-minimized")
             
         options.add_argument("--disable-gpu")
@@ -55,19 +86,34 @@ class BUAutomation:
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
-        
-        # Suppress logging
         options.add_argument("--log-level=3")
         
-        self._update_progress("Starting browser...")
+        service = ChromeService(ChromeDriverManager().install())
+        self.driver = webdriver.Chrome(service=service, options=options)
+        self._update_progress("Chrome browser started!")
+        return True
+    
+    def _start_edge(self):
+        """Start Edge browser."""
+        options = EdgeOptions()
         
-        try:
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=options)
-            self.driver.implicitly_wait(10)
-            return True
-        except Exception as e:
-            raise Exception(f"Failed to start browser: {str(e)}")
+        if self.headless:
+            options.add_argument("--headless=new")
+        else:
+            options.add_argument("--start-minimized")
+            
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument("--log-level=3")
+        
+        service = EdgeService(EdgeChromiumDriverManager().install())
+        self.driver = webdriver.Edge(service=service, options=options)
+        self._update_progress("Edge browser started!")
+        return True
     
     def login_to_cms(self, enrollment, password, institute):
         """Login to CMS with provided credentials."""
@@ -194,6 +240,15 @@ class BUAutomation:
             
             wait = WebDriverWait(self.driver, 15)
             wait.until(EC.presence_of_element_located((By.ID, "courseId")))
+            
+            # Wait extra time for page to fully load and sync cookies
+            time.sleep(3)
+            
+            # Also wait for course dropdown to have options
+            course_dropdown = self.driver.find_element(By.ID, "courseId")
+            WebDriverWait(self.driver, 10).until(
+                lambda d: len(Select(course_dropdown).options) > 1
+            )
             
             # Extract session cookies from Selenium
             cookies = {c['name']: c['value'] for c in self.driver.get_cookies()}

@@ -265,7 +265,8 @@ class BUAutomation:
                                 "title": title,
                                 "deadline": deadline,
                                 "status": "Submitted" if has_submission else "Not Submitted",
-                                "is_overdue": is_overdue
+                                "is_overdue": is_overdue,
+                                "url": url  # Direct link to this course's assignments
                             })
                     
                     return assignments

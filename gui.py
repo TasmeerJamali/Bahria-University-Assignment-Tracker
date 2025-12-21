@@ -520,6 +520,19 @@ class MainWindow:
             fg=color
         ).pack(anchor="w", pady=(4, 0))
         
+        # Open button - opens assignment page in browser
+        if assignment.get("url"):
+            open_btn = tk.Label(
+                content,
+                text="🔗 Open in LMS",
+                font=("Segoe UI", 9, "underline"),
+                bg=self.COLORS["card_bg"],
+                fg=self.COLORS["accent"],
+                cursor="hand2"
+            )
+            open_btn.pack(anchor="w", pady=(6, 0))
+            open_btn.bind("<Button-1>", lambda e, url=assignment["url"]: self._open_url(url))
+        
     def _create_submitted_section(self, assignments):
         """Create collapsible submitted section."""
         section = tk.Frame(self.content_frame, bg=self.COLORS["bg"])
@@ -583,6 +596,10 @@ class MainWindow:
     def _open_lms(self):
         """Open LMS in default browser."""
         webbrowser.open("https://lms.bahria.edu.pk/Student/Dashboard.php")
+    
+    def _open_url(self, url):
+        """Open any URL in default browser."""
+        webbrowser.open(url)
         
     def _open_settings(self):
         """Open settings dialog."""

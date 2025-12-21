@@ -598,8 +598,43 @@ class MainWindow:
         webbrowser.open("https://lms.bahria.edu.pk/Student/Dashboard.php")
     
     def _open_url(self, url):
-        """Open any URL in default browser."""
-        webbrowser.open(url)
+        """Open assignment via automated login (like main scraper)."""
+        # Run in background thread to not freeze UI
+        def open_automated():
+            try:
+                self._update_status("🔐 Opening assignment (logging in)...")
+                
+                # Import here to avoid circular imports
+                from automation import BUAutomation
+                
+                # Create automation instance (visible browser, don't close it)
+                automation = BUAutomation(
+                    headless=False,
+                    progress_callback=self._update_status
+                )
+                
+                automation.start_browser()
+                automation.login_to_cms(
+                    self.credentials["enrollment"],
+                    self.credentials["password"],
+                    self.credentials["institute"]
+                )
+                automation.navigate_to_lms()
+                
+                # Navigate to the assignment URL
+                self._update_status("📄 Opening assignment page...")
+                automation.driver.get(url)
+                
+                self._update_status("✅ Assignment opened! (Browser left open)")
+                
+                # Don't close the browser - leave it open for user
+                # automation.close()  <-- intentionally not called
+                
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to open: {str(e)}"))
+                self._update_status("Ready")
+        
+        threading.Thread(target=open_automated, daemon=True).start()
         
     def _open_settings(self):
         """Open settings dialog."""

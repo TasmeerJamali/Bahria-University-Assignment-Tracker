@@ -322,6 +322,21 @@ class MainWindow:
             padx=20,
             pady=8,
             command=self._open_settings
+        ).pack(side="left", padx=(0, 10))
+        
+        # Copy Summary button
+        tk.Button(
+            btn_frame,
+            text="📋 Copy Summary",
+            font=("Segoe UI", 10),
+            bg=self.COLORS["card_bg"],
+            fg=self.COLORS["text"],
+            activebackground="#1e2a47",
+            relief="flat",
+            cursor="hand2",
+            padx=20,
+            pady=8,
+            command=self._copy_summary
         ).pack(side="left")
         
     def _on_frame_configure(self, event):
@@ -651,6 +666,136 @@ class MainWindow:
                 "Credentials deleted. Please restart the application."
             )
             self.root.destroy()
+    
+    def _copy_summary(self):
+        """Copy formatted assignment summary to clipboard."""
+        if not hasattr(self, 'assignments') or not self.assignments:
+            messagebox.showwarning("No Data", "No assignments to export. Please refresh first.")
+            return
+        
+        summary = self._generate_summary()
+        
+        # Copy to clipboard
+        self.root.clipboard_clear()
+        self.root.clipboard_append(summary)
+        self.root.update()
+        
+        # Ask if user wants to save to file too
+        result = messagebox.askyesno(
+            "✅ Copied!",
+            "Summary copied to clipboard!\n\n"
+            "You can now paste it in WhatsApp, Notes, etc.\n\n"
+            "Do you also want to save it as a text file?"
+        )
+        
+        if result:
+            self._save_summary_to_file(summary)
+    
+    def _generate_summary(self):
+        """Generate formatted text summary of assignments."""
+        from datetime import datetime
+        
+        lines = []
+        lines.append("═" * 40)
+        lines.append("    🎓 BU ASSIGNMENT TRACKER")
+        lines.append("    📅 " + datetime.now().strftime("%B %d, %Y %I:%M %p"))
+        lines.append("═" * 40)
+        lines.append("")
+        
+        # Categorize assignments
+        pending = [a for a in self.assignments if a["status"] != "Submitted"]
+        submitted = [a for a in self.assignments if a["status"] == "Submitted"]
+        
+        overdue = [a for a in pending if a["days_left"] is not None and a["days_left"] < 0]
+        urgent = [a for a in pending if a["days_left"] is not None and 0 <= a["days_left"] <= 3]
+        soon = [a for a in pending if a["days_left"] is not None and 4 <= a["days_left"] <= 7]
+        upcoming = [a for a in pending if a["days_left"] is not None and a["days_left"] > 7]
+        
+        # Summary stats
+        lines.append(f"📊 SUMMARY: {len(pending)} pending, {len(submitted)} submitted")
+        lines.append("")
+        
+        # Overdue section
+        if overdue:
+            lines.append("🔴 OVERDUE (Past Deadline)")
+            lines.append("-" * 35)
+            for a in overdue:
+                lines.append(f"  ❌ {a['course']}")
+                lines.append(f"     \"{a['title']}\"")
+                lines.append(f"     Due: {a['deadline']} ({abs(a['days_left'])} days ago)")
+                lines.append("")
+        
+        # Urgent section
+        if urgent:
+            lines.append("🟠 URGENT (Due in 0-3 days)")
+            lines.append("-" * 35)
+            for a in urgent:
+                if a['days_left'] == 0:
+                    days_text = "TODAY!"
+                elif a['days_left'] == 1:
+                    days_text = "Tomorrow"
+                else:
+                    days_text = f"{a['days_left']} days left"
+                lines.append(f"  ⚠️ {a['course']}")
+                lines.append(f"     \"{a['title']}\"")
+                lines.append(f"     Due: {a['deadline']} ({days_text})")
+                lines.append("")
+        
+        # Due soon section
+        if soon:
+            lines.append("🟡 DUE SOON (4-7 days)")
+            lines.append("-" * 35)
+            for a in soon:
+                lines.append(f"  📌 {a['course']}")
+                lines.append(f"     \"{a['title']}\"")
+                lines.append(f"     Due: {a['deadline']} ({a['days_left']} days left)")
+                lines.append("")
+        
+        # Upcoming section
+        if upcoming:
+            lines.append("🟢 UPCOMING (8+ days)")
+            lines.append("-" * 35)
+            for a in upcoming:
+                lines.append(f"  ✓ {a['course']}")
+                lines.append(f"     \"{a['title']}\"")
+                lines.append(f"     Due: {a['deadline']} ({a['days_left']} days left)")
+                lines.append("")
+        
+        # Completed section
+        if submitted:
+            lines.append(f"✅ COMPLETED ({len(submitted)} assignments)")
+            lines.append("-" * 35)
+            for a in submitted:
+                lines.append(f"  ✓ {a['course']} - {a['title']}")
+            lines.append("")
+        
+        # Footer
+        lines.append("═" * 40)
+        lines.append("Generated by BU Assignment Tracker")
+        lines.append("github.com/TasmeerJamali/Bahria-University-Assignment-Tracker")
+        lines.append("═" * 40)
+        
+        return "\n".join(lines)
+    
+    def _save_summary_to_file(self, summary):
+        """Save summary to a text file."""
+        from datetime import datetime
+        from tkinter import filedialog
+        
+        # Generate default filename
+        default_name = f"BU_Assignments_{datetime.now().strftime('%Y-%m-%d_%H%M')}.txt"
+        
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            initialfile=default_name,
+            title="Save Assignment Summary"
+        )
+        
+        if filepath:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(summary)
+            messagebox.showinfo("Saved!", f"Summary saved to:\n{filepath}")
             
     def run(self):
         self.root.mainloop()

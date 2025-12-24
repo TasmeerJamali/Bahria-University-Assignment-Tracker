@@ -1,0 +1,47 @@
+name: BU Assignment Scraper (Autonomous)
+
+on:
+  schedule:
+    # Run once daily at 6 AM PKT (1 AM UTC)
+    - cron: '0 1 * * *'
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  scrape-all-students:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@latest
+        with:
+          chrome-version: stable
+      
+      - name: Install dependencies
+        run: |
+          pip install selenium requests webdriver-manager
+      
+      - name: Run Cloud Scraper
+        env:
+          API_URL: https://buassignmenttracker.pythonanywhere.com
+        run: |
+          echo "Starting autonomous scraping at $(date)"
+          python bu-notifications-cloud/cloud_scraper.py
+          echo "Scraping complete"
+      
+      - name: Trigger Notifications
+        run: |
+          echo "Triggering notifications..."
+          response=$(curl -s -X POST \
+            https://buassignmenttracker.pythonanywhere.com/api/trigger \
+            -H "Content-Type: application/json")
+          echo "Response: $response"

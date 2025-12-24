@@ -142,6 +142,98 @@ def list_students():
     })
 
 
+@app.route('/api/register', methods=['POST'])
+def register_autosync():
+    """
+    Register a student for automatic cloud scraping.
+    
+    Expected JSON body:
+    {
+        "enrollment": "02-132222-024",
+        "password": "encrypted_password",
+        "institute": "Karachi Campus"
+    }
+    """
+    import hashlib
+    import base64
+    
+    try:
+        payload = request.get_json()
+        enrollment = payload.get("enrollment")
+        password = payload.get("password")
+        institute = payload.get("institute", "Karachi Campus")
+        
+        if not enrollment or not password:
+            return jsonify({"error": "Enrollment and password required"}), 400
+        
+        data = load_data()
+        
+        # Simple encryption (XOR with key) - use proper encryption in production
+        key = "bu-tracker-2024"
+        encrypted = base64.b64encode(
+            bytes([ord(c) ^ ord(key[i % len(key)]) for i, c in enumerate(password)])
+        ).decode()
+        
+        # Update or create student entry
+        if enrollment not in data["students"]:
+            data["students"][enrollment] = {"enrollment": enrollment, "assignments": []}
+        
+        data["students"][enrollment]["encrypted_password"] = encrypted
+        data["students"][enrollment]["institute"] = institute
+        data["students"][enrollment]["auto_sync"] = True
+        data["students"][enrollment]["registered_at"] = datetime.now().isoformat()
+        
+        save_data(data)
+        
+        topic = f"bu-assignments-{enrollment.lower()}"
+        
+        return jsonify({
+            "success": True,
+            "message": "Registered for auto-sync. Cloud will scrape your LMS daily at 6 AM.",
+            "topic": topic
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/students/autosync', methods=['GET'])
+def get_autosync_students():
+    """
+    Get list of students with auto-sync enabled (for cloud scraper).
+    Returns decrypted credentials.
+    """
+    import base64
+    
+    try:
+        data = load_data()
+        students = []
+        key = "bu-tracker-2024"
+        
+        for enrollment, student in data.get("students", {}).items():
+            if student.get("auto_sync"):
+                encrypted = student.get("encrypted_password", "")
+                
+                # Decrypt password
+                try:
+                    decoded = base64.b64decode(encrypted)
+                    password = "".join([chr(b ^ ord(key[i % len(key)])) for i, b in enumerate(decoded)])
+                except:
+                    password = ""
+                
+                if password:
+                    students.append({
+                        "enrollment": enrollment,
+                        "password": password,
+                        "institute": student.get("institute", "Karachi Campus")
+                    })
+        
+        return jsonify({"students": students, "count": len(students)})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/trigger', methods=['POST'])
 def trigger_notifications():
     """

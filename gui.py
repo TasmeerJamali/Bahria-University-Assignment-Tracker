@@ -337,6 +337,21 @@ class MainWindow:
             padx=20,
             pady=8,
             command=self._copy_summary
+        ).pack(side="left", padx=(0, 10))
+        
+        # Enable Notifications button (auto-sync + manual sync)
+        tk.Button(
+            btn_frame,
+            text="📱 Enable Notifications",
+            font=("Segoe UI", 10, "bold"),
+            bg="#10b981",  # Green
+            fg="white",
+            activebackground="#059669",
+            relief="flat",
+            cursor="hand2",
+            padx=20,
+            pady=8,
+            command=self._enable_notifications
         ).pack(side="left")
         
     def _on_frame_configure(self, event):
@@ -796,6 +811,189 @@ class MainWindow:
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(summary)
             messagebox.showinfo("Saved!", f"Summary saved to:\n{filepath}")
+    
+    def _sync_to_cloud(self):
+        """Sync assignments to cloud for phone notifications."""
+        import requests
+        import json
+        
+        if not self.assignments:
+            messagebox.showwarning(
+                "No Data",
+                "No assignments to sync. Please fetch assignments first."
+            )
+            return
+        
+        # Get enrollment from credentials
+        try:
+            with open("credentials.json", "r") as f:
+                creds = json.load(f)
+            enrollment = creds.get("enrollment", "")
+        except Exception:
+            messagebox.showerror(
+                "Error",
+                "Could not read enrollment. Please check credentials."
+            )
+            return
+        
+        if not enrollment:
+            messagebox.showerror("Error", "Enrollment number not found.")
+            return
+        
+        # Prepare data for cloud
+        assignments_data = []
+        for a in self.assignments:
+            assignments_data.append({
+                "course": a.get("course", "Unknown"),
+                "title": a.get("title", ""),
+                "deadline": a.get("deadline", ""),
+                "days_left": a.get("days_left"),
+                "status": a.get("status", "")
+            })
+        
+        payload = {
+            "enrollment": enrollment,
+            "assignments": assignments_data
+        }
+        
+        # Send to cloud API
+        CLOUD_API = "https://buassignmenttracker.pythonanywhere.com/api/sync"
+        
+        try:
+            self._update_status("Syncing to cloud...")
+            
+            response = requests.post(
+                CLOUD_API,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                topic = result.get("topic", f"bu-assignments-{enrollment.lower()}")
+                urgent = result.get("urgent_count", 0)
+                
+                messagebox.showinfo(
+                    "Synced!",
+                    f"✅ {len(assignments_data)} assignments synced to cloud!\n\n"
+                    f"📱 To receive phone notifications:\n"
+                    f"1. Install 'ntfy' app (Play Store/App Store)\n"
+                    f"2. Subscribe to topic:\n   {topic}\n\n"
+                    f"⚠️ Urgent assignments: {urgent}"
+                )
+                self._update_status(f"Synced! Topic: {topic}")
+            else:
+                messagebox.showerror(
+                    "Sync Failed",
+                    f"Server returned error: {response.status_code}\n{response.text}"
+                )
+                self._update_status("Sync failed")
+                
+        except requests.exceptions.ConnectionError:
+            messagebox.showerror(
+                "Connection Error",
+                "Could not connect to cloud server.\n"
+                "The server may be starting up (try again in 30 seconds)."
+            )
+            self._update_status("Connection failed")
+        except Exception as e:
+            messagebox.showerror("Sync Error", f"Error syncing: {str(e)}")
+            self._update_status("Sync error")
+    
+    def _enable_notifications(self):
+        """Enable automatic cloud notifications for this student."""
+        import requests
+        import json
+        
+        # Get credentials
+        try:
+            with open("credentials.json", "r") as f:
+                creds = json.load(f)
+            enrollment = creds.get("enrollment", "")
+            password = creds.get("password", "")
+            institute = creds.get("institute", "Karachi Campus")
+        except Exception:
+            messagebox.showerror(
+                "Error",
+                "Could not read credentials. Please check settings."
+            )
+            return
+        
+        if not enrollment or not password:
+            messagebox.showerror("Error", "Credentials not found.")
+            return
+        
+        # API endpoints
+        REGISTER_API = "https://buassignmenttracker.pythonanywhere.com/api/register"
+        SYNC_API = "https://buassignmenttracker.pythonanywhere.com/api/sync"
+        
+        try:
+            self._update_status("Enabling notifications...")
+            
+            # Step 1: Register for auto-sync
+            register_response = requests.post(
+                REGISTER_API,
+                json={
+                    "enrollment": enrollment,
+                    "password": password,
+                    "institute": institute
+                },
+                timeout=30
+            )
+            
+            if register_response.status_code != 200:
+                messagebox.showerror(
+                    "Registration Failed",
+                    f"Could not register: {register_response.text}"
+                )
+                return
+            
+            topic = f"bu-assignments-{enrollment.lower()}"
+            
+            # Step 2: Also sync current assignments if available
+            if self.assignments:
+                assignments_data = []
+                for a in self.assignments:
+                    assignments_data.append({
+                        "course": a.get("course", "Unknown"),
+                        "title": a.get("title", ""),
+                        "deadline": a.get("deadline", ""),
+                        "days_left": a.get("days_left"),
+                        "status": a.get("status", "")
+                    })
+                
+                requests.post(
+                    SYNC_API,
+                    json={"enrollment": enrollment, "assignments": assignments_data},
+                    timeout=30
+                )
+            
+            # Show success with instructions
+            messagebox.showinfo(
+                "🎉 Notifications Enabled!",
+                f"You're all set for automatic notifications!\n\n"
+                f"📱 To receive notifications on your phone:\n\n"
+                f"1. Install 'ntfy' app (Play Store / App Store)\n"
+                f"2. Open app → Tap '+'\n"
+                f"3. Subscribe to topic:\n"
+                f"   {topic}\n\n"
+                f"📅 Schedule:\n"
+                f"• 6 AM - Cloud scrapes your LMS\n"
+                f"• 8 AM, 2 PM, 8 PM - Notifications sent\n\n"
+                f"✨ Works even when your laptop is OFF!"
+            )
+            
+            self._update_status(f"Notifications enabled! Topic: {topic}")
+            
+        except requests.exceptions.ConnectionError:
+            messagebox.showerror(
+                "Connection Error",
+                "Could not connect to cloud server.\nPlease try again."
+            )
+            self._update_status("Connection failed")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error enabling notifications: {str(e)}")
+            self._update_status("Error")
             
     def run(self):
         self.root.mainloop()

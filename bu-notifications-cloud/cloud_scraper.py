@@ -212,10 +212,19 @@ def sync_to_api(enrollment: str, assignments: List[Dict]) -> bool:
 
 def get_auto_sync_students() -> List[Dict]:
     """Get list of students with auto-sync enabled."""
+    # API key for security
+    API_KEY = os.environ.get("API_KEY", "bu-tracker-secret-2024")
+    
     try:
-        response = requests.get(f"{API_BASE}/api/students/autosync", timeout=30)
+        response = requests.get(
+            f"{API_BASE}/api/students/autosync",
+            params={"key": API_KEY},
+            timeout=30
+        )
         if response.status_code == 200:
             return response.json().get("students", [])
+        else:
+            print(f"API returned {response.status_code}: {response.text}")
     except Exception as e:
         print(f"Error fetching students: {e}")
     return []

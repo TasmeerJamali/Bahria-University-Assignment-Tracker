@@ -202,8 +202,16 @@ def get_autosync_students():
     """
     Get list of students with auto-sync enabled (for cloud scraper).
     Returns decrypted credentials.
+    PROTECTED: Requires API key for security.
     """
     import base64
+    
+    # Security: Require API key
+    API_KEY = "bu-tracker-secret-2024"  # This should match GitHub Actions secret
+    provided_key = request.args.get('key') or request.headers.get('X-API-Key')
+    
+    if provided_key != API_KEY:
+        return jsonify({"error": "Unauthorized. API key required."}), 401
     
     try:
         data = load_data()

@@ -266,8 +266,36 @@ def trigger_notifications():
                     urgent.append(a)
             
             if not urgent:
-                results["skipped"] += 1
-                results["details"].append({"enrollment": enrollment, "status": "skipped", "reason": "no urgent"})
+                # Send "All Clear" notification
+                topic = f"bu-assignments-{enrollment.lower()}"
+                all_clear_msg = (
+                    "🎉 All Clear!\n\n"
+                    "No urgent assignments today.\n"
+                    "Keep up the great work!\n\n"
+                    "✅ All assignments are either:\n"
+                    "• Already submitted, or\n"
+                    "• Due in 4+ days"
+                )
+                try:
+                    response = requests.post(
+                        f"https://ntfy.sh/{topic}",
+                        data=all_clear_msg.encode('utf-8'),
+                        headers={
+                            "Title": quote("BU Assignment Tracker", safe=''),
+                            "Priority": "2",
+                            "Tags": "white_check_mark,tada"
+                        },
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        results["sent"] += 1
+                        results["details"].append({"enrollment": enrollment, "status": "all_clear"})
+                    else:
+                        results["skipped"] += 1
+                        results["details"].append({"enrollment": enrollment, "status": "skipped", "reason": "send failed"})
+                except:
+                    results["skipped"] += 1
+                    results["details"].append({"enrollment": enrollment, "status": "skipped", "reason": "error"})
                 continue
             
             # Build notification message

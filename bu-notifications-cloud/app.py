@@ -256,6 +256,28 @@ def trigger_notifications():
     import requests
     from urllib.parse import quote
     
+    def calculate_days_left(deadline_str):
+        """Calculate days left from deadline string - DYNAMIC calculation."""
+        if not deadline_str:
+            return None
+        
+        formats = [
+            "%A, %d %B %Y, %I:%M %p",  # "Monday, 30 December 2024, 11:59 PM"
+            "%d %B %Y, %I:%M %p",       # "30 December 2024, 11:59 PM"
+            "%Y-%m-%d %H:%M:%S",        # "2024-12-30 23:59:00"
+            "%d/%m/%Y",                  # "30/12/2024"
+        ]
+        
+        for fmt in formats:
+            try:
+                deadline = datetime.strptime(deadline_str.strip(), fmt)
+                delta = deadline - datetime.now()
+                return delta.days
+            except ValueError:
+                continue
+        
+        return None
+    
     results = {"sent": 0, "skipped": 0, "errors": 0, "details": []}
     
     try:
@@ -265,10 +287,19 @@ def trigger_notifications():
         for enrollment, student in students.items():
             assignments = student.get("assignments", [])
             
-            # Filter urgent assignments
+            # Filter urgent assignments - RECALCULATE days_left from deadline
             urgent = []
             for a in assignments:
-                days = a.get("days_left")
+                # Try to calculate fresh days_left from deadline
+                deadline = a.get("deadline", "")
+                fresh_days = calculate_days_left(deadline)
+                
+                # Use fresh calculation if available, otherwise fall back to stored value
+                days = fresh_days if fresh_days is not None else a.get("days_left")
+                
+                # Update the assignment with fresh days for notification message
+                a["days_left"] = days
+                
                 status = a.get("status", "")
                 if days is not None and days <= 3 and status.lower() != "submitted":
                     urgent.append(a)

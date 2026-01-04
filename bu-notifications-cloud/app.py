@@ -301,7 +301,8 @@ def trigger_notifications():
                 a["days_left"] = days
                 
                 status = a.get("status", "")
-                if days is not None and days <= 3 and status.lower() != "submitted":
+                # Only notify for assignments due in 0-3 days (NOT overdue/negative)
+                if days is not None and 0 <= days <= 3 and status.lower() != "submitted":
                     urgent.append(a)
             
             if not urgent:
